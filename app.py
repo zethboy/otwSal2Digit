@@ -16,9 +16,8 @@ with open("scaler.pkl", "rb") as f:
 with open("encoders.pkl", "rb") as f:
     encoders = pickle.load(f)
 
-# ===== Sidebar Input =====
-st.sidebar.header("📝 Input Data Nasabah")
-
+# ===== Prediksi Kelayakan Pinjaman =====
+st.sidebar.header("📝 Input Data Pinjaman")
 gender = st.sidebar.selectbox("Jenis Kelamin", ["Male", "Female"])
 married = st.sidebar.selectbox("Status Pernikahan", ["Yes", "No"])
 dependents = st.sidebar.selectbox("Jumlah Tanggungan", ["0", "1", "2", "3+"])
@@ -31,10 +30,10 @@ loan_term = st.sidebar.selectbox("Lama Pinjaman (dalam hari)", [360, 120, 180, 2
 credit_history = st.sidebar.selectbox("Riwayat Kredit", [1.0, 0.0])
 property_area = st.sidebar.selectbox("Area Properti", ["Urban", "Rural", "Semiurban"])
 
-# ===== Prediksi =====
-if st.sidebar.button("Prediksi Kelayakan"):
-    # Buat dataframe input
-    input_data = {
+if st.sidebar.button("Prediksi Kelayakan Pinjaman"):
+    import numpy as np
+    # 1. Buat DataFrame
+    new_applicant = {
         'Gender': gender,
         'Married': married,
         'Dependents': dependents,
@@ -47,24 +46,54 @@ if st.sidebar.button("Prediksi Kelayakan"):
         'Credit_History': credit_history,
         'Property_Area': property_area
     }
+    df_new = pd.DataFrame([new_applicant])
 
-    input_df = pd.DataFrame([input_data])
+    # 2. Encode fitur kategorikal
+    cols_to_encode = ['Gender', 'Married', 'Dependents', 'Education', 'Self_Employed', 'Property_Area']
+    for col in cols_to_encode:
+        df_new[col] = encoders[col].transform(df_new[col])
 
-    # Encode kolom kategorikal
-    for col, encoder in encoders.items():
-        if col in input_df.columns:
-            input_df[col] = encoder.transform(input_df[[col]])
+    # 3. Rekayasa fitur
+    df_new['Total_Income'] = df_new['ApplicantIncome'] + df_new['CoapplicantIncome']
+    df_new['ApplicantIncome_to_LoanAmount'] = df_new['LoanAmount'] / (df_new['Total_Income'] + 1)
+    df_new['ApplicantIncome_to_LoanAmount'] = (
+        df_new['ApplicantIncome_to_LoanAmount']
+        .replace([np.inf, -np.inf], 0)
+        .fillna(0)
+    )
 
-    # Scale kolom numerik
-    numerical_features = scaler.feature_names_in_
-     # Tambah fitur turunan
-    input_df["Total_Income"] = input_df["ApplicantIncome"] + input_df["CoapplicantIncome"]
-    input_df["ApplicantIncome_to_LoanAmount"] = input_df["ApplicantIncome"] / (input_df["LoanAmount"] + 1)
+    # 4. Standarisasi fitur numerik
+    numerik = ['ApplicantIncome', 'CoapplicantIncome', 'LoanAmount', 'Loan_Amount_Term', 'Credit_History']
+    df_new[numerik] = scaler.transform(df_new[numerik])
 
-    # Susun ulang kolom agar sesuai urutan saat training
-    input_df = input_df[model.feature_names_in_]
+    # 5. Susun urutan kolom
+    try:
+        df_new = df_new[model.feature_names_in_]
+    except Exception:
+        st.error("Urutan kolom tidak sesuai dengan model. Pastikan fitur dan urutan kolom sama seperti saat training.")
 
-    # Prediksi
-    prediction = model.predict(input_df)[0]
-    result = "✅ Layak" if prediction == 1 else "❌ Tidak Layak"
-    st.success(f"Hasil Prediksi: **{result}**")
+    # 6. Prediksi dengan RandomForest
+    rf_pred = model.predict(df_new)[0]
+    rf_proba = model.predict_proba(df_new)[0]
+
+    st.subheader("=== Hasil Prediksi RandomForest ===")
+    if rf_pred == 1:
+        st.success("✅ **Status: Disetujui**")
+    else:
+        st.error("❌ **Status: Ditolak**")
+
+    st.markdown(
+        f"""
+        <div style="display: flex; gap: 20px;">
+            <div style="background: #f8d7da; padding: 15px; border-radius: 8px; flex: 1;">
+                <b style="color:  #721c24;">Probabilitas Ditolak (0):</b>
+                <span style="font-size: 1.5em; color: #721c24;">{rf_proba[0]:.2f}</span>
+            </div>
+            <div style="background: #d4edda; padding: 15px; border-radius: 8px; flex: 1;">
+                <b style="color:  #155724;">Probabilitas Disetujui (1):</b>
+                <span style="font-size: 1.5em; color: #155724;">{rf_proba[1]:.2f}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
