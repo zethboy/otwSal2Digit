@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import pickle
-
+import numpy as np
 # ===== Konfigurasi Halaman Streamlit (paling atas!) =====
 st.set_page_config(layout="centered", page_title="Prediksi Kelayakan Pinjaman")
 st.title("📊 Prediksi Kelayakan Peminjaman")
@@ -17,21 +17,23 @@ with open("encoders.pkl", "rb") as f:
     encoders = pickle.load(f)
 
 # ===== Prediksi Kelayakan Pinjaman =====
-st.sidebar.header("📝 Input Data Pinjaman")
-gender = st.sidebar.selectbox("Jenis Kelamin", ["Male", "Female"])
-married = st.sidebar.selectbox("Status Pernikahan", ["Yes", "No"])
-dependents = st.sidebar.selectbox("Jumlah Tanggungan", ["0", "1", "2", "3+"])
-education = st.sidebar.selectbox("Pendidikan", ["Graduate", "Not Graduate"])
-self_employed = st.sidebar.selectbox("Wiraswasta", ["Yes", "No"])
-applicant_income = st.sidebar.number_input("Pendapatan Pemohon (1000 = 1 juta)", 0, 100000, 6000)
-coapplicant_income = st.sidebar.number_input("Pendapatan Pasangan (1000 = 1 juta) ", 0, 100000, 2000)
-loan_amount = st.sidebar.number_input("Jumlah Pinjaman (1000 = 1 juta)", 0, 10000, 180)
-loan_term = st.sidebar.selectbox("Lama Pinjaman (dalam hari)", [360, 120, 180, 240, 300, 84, 60])
-credit_history = st.sidebar.selectbox("Riwayat Kredit", [1.0, 0.0])
-property_area = st.sidebar.selectbox("Area Properti", ["Urban", "Rural", "Semiurban"])
+st.header("📝 Input Data Pinjaman")
+col1, col2 = st.columns(2)
+with col1:
+    gender = st.selectbox("Jenis Kelamin", ["Male", "Female"])
+    married = st.selectbox("Status Pernikahan", ["Yes", "No"])
+    dependents = st.selectbox("Jumlah Tanggungan", ["0", "1", "2", "3+"])
+    education = st.selectbox("Pendidikan", ["Graduate", "Not Graduate"])
+    self_employed = st.selectbox("Wiraswasta", ["Yes", "No"])
+with col2:
+    applicant_income = st.number_input("Pendapatan Pemohon (1000 = 1 juta)", 0, 100000, 6000)
+    coapplicant_income = st.number_input("Pendapatan Pasangan (1000 = 1 juta) ", 0, 100000, 2000)
+    loan_amount = st.number_input("Jumlah Pinjaman (1000 = 1 juta)", 0, 10000, 180)
+    loan_term = st.selectbox("Lama Pinjaman (dalam hari)", [360, 120, 180, 240, 300, 84, 60])
+    credit_history = st.selectbox("Riwayat Kredit", [1.0, 0.0])
+    property_area = st.selectbox("Area Properti", ["Urban", "Rural", "Semiurban"])
 
-if st.sidebar.button("Prediksi Kelayakan Pinjaman"):
-    import numpy as np
+if st.button("Prediksi Kelayakan Pinjaman"):
     # 1. Buat DataFrame
     new_applicant = {
         'Gender': gender,
@@ -54,13 +56,16 @@ if st.sidebar.button("Prediksi Kelayakan Pinjaman"):
         df_new[col] = encoders[col].transform(df_new[col])
 
     # 3. Rekayasa fitur
-    df_new['Total_Income'] = df_new['ApplicantIncome'] + df_new['CoapplicantIncome']
-    df_new['ApplicantIncome_to_LoanAmount'] = df_new['LoanAmount'] / (df_new['Total_Income'] + 1)
-    df_new['ApplicantIncome_to_LoanAmount'] = (
-        df_new['ApplicantIncome_to_LoanAmount']
+    ApplicantIncome_to_LoanAmount = df_new['LoanAmount'] / (df_new['ApplicantIncome'] + 1)
+    ApplicantIncome_to_LoanAmount = (
+        ApplicantIncome_to_LoanAmount
         .replace([np.inf, -np.inf], 0)
         .fillna(0)
     )
+    Total_Income = df_new['ApplicantIncome'] + df_new['CoapplicantIncome']
+    df_new['Total_Income'] = df_new['ApplicantIncome'] + df_new['CoapplicantIncome']
+    df_new['ApplicantIncome_to_LoanAmount'] = df_new['LoanAmount'] / (Total_Income + 1)
+    df_new['ApplicantIncome_to_LoanAmount'] = ApplicantIncome_to_LoanAmount
 
     # 4. Standarisasi fitur numerik
     numerik = ['ApplicantIncome', 'CoapplicantIncome', 'LoanAmount', 'Loan_Amount_Term', 'Credit_History']
@@ -76,7 +81,27 @@ if st.sidebar.button("Prediksi Kelayakan Pinjaman"):
     rf_pred = model.predict(df_new)[0]
     rf_proba = model.predict_proba(df_new)[0]
 
-    st.subheader("=== Hasil Prediksi RandomForest ===")
+    # 7. Tampilkan ringkasan input dan fitur turunan
+    st.subheader("Ringkasan Data Input")
+    st.write("**Data yang Anda masukkan:**")
+
+    st.table({
+        'Jenis Kelamin': gender,
+        'Status Pernikahan': married,
+        'Jumlah Tanggungan': dependents,
+        'Pendidikan': education,
+        'Wiraswasta': self_employed,
+        'Pendapatan Pemohon': applicant_income,
+        'Pendapatan Pasangan': coapplicant_income,
+        'Jumlah Pinjaman': loan_amount,
+        'Lama Pinjaman (hari)': loan_term,
+        'Riwayat Kredit': credit_history,
+        'Area Properti': property_area,
+        'Total Pendapatan': Total_Income.values[0],
+        'Rasio Pinjaman terhadap Total Pendapatan': round(ApplicantIncome_to_LoanAmount.values[0], 3)
+    })
+
+    st.subheader("=== Hasil Prediksi ===")
     if rf_pred == 1:
         st.success("✅ **Status: Disetujui**")
     else:
@@ -97,3 +122,32 @@ if st.sidebar.button("Prediksi Kelayakan Pinjaman"):
         """,
         unsafe_allow_html=True
     )
+
+    # 8. Visualisasi tambahan
+    st.subheader("Visualisasi Fitur Penting")
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    
+    # Rasio Pinjaman terhadap Total Pendapatan
+    fig1, ax1 = plt.subplots(figsize=(4,2))
+    ax1.barh(["Rasio Pinjaman/Total Pendapatan"], [ApplicantIncome_to_LoanAmount.values[0]], color="#007bff")
+    ax1.set_xlim(0, 1)
+    ax1.set_xlabel("Rasio")
+    ax1.set_title("Rasio Pinjaman terhadap Total Pendapatan")
+    st.pyplot(fig1)
+
+    # Visualisasi komposisi pendapatan
+    fig2, ax2 = plt.subplots(figsize=(4,2))
+    ax2.bar(["Pemohon", "Pasangan"], [applicant_income, coapplicant_income], color=["#28a745", "#ffc107"])
+    ax2.set_ylabel("Pendapatan (ribu)")
+    ax2.set_title("Komposisi Pendapatan")
+    st.pyplot(fig2)
+
+    # Visualisasi proporsi pelunasan (Loan/Total Income per tahun)
+    pelunasan_per_tahun = (loan_amount * 1000) / ((Total_Income.values[0] + 1) * 12)
+    fig3, ax3 = plt.subplots(figsize=(4,2))
+    ax3.bar(["Proporsi Pelunasan per Bulan"], [pelunasan_per_tahun], color="#dc3545")
+    ax3.set_ylabel("Proporsi (Loan/Income)")
+    ax3.set_ylim(0, 1)
+    ax3.set_title("Proporsi Angsuran per Bulan terhadap Total Pendapatan")
+    st.pyplot(fig3)
