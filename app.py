@@ -18,11 +18,11 @@ with open("encoders.pkl", "rb") as f:
 
 # ===== Prediksi Kelayakan Pinjaman =====
 st.sidebar.header("📝 Input Data Pinjaman")
-gender = st.sidebar.selectbox("Jenis Kelamin", ["Laki-laki", "Perempuan"])
-married = st.sidebar.selectbox("Status Pernikahan", ["Ya", "Tidak"])
+gender = st.sidebar.selectbox("Jenis Kelamin", ["Male", "Female"])
+married = st.sidebar.selectbox("Status Pernikahan", ["Yes", "No"])
 dependents = st.sidebar.selectbox("Jumlah Tanggungan", ["0", "1", "2", "3+"])
 education = st.sidebar.selectbox("Pendidikan", ["Graduate", "Not Graduate"])
-self_employed = st.sidebar.selectbox("Wiraswasta", ["Ya", "Tidak"])
+self_employed = st.sidebar.selectbox("Wiraswasta", ["Yes", "No"])
 applicant_income = st.sidebar.number_input("Pendapatan Pemohon (1000 = 1 juta)", 0, 100000, 6000)
 coapplicant_income = st.sidebar.number_input("Pendapatan Pasangan (1000 = 1 juta) ", 0, 100000, 2000)
 loan_amount = st.sidebar.number_input("Jumlah Pinjaman (1000 = 1 juta)", 0, 10000, 180)
